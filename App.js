@@ -1,12 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, ImageBackground } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
 
-// Tela Inicial
+// ========== TEMAS DE EMOJIS ==========
+const THEMES = {
+  jogos: ['🎮', '🎯', '🎲', '🎪', '🎭', '🎨', '🎸', '🎺', '🎹', '🎤', '🎧', '🎬', '🕹️', '👾', '🎰', '🃏'],
+  animais: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔'],
+  comida: ['🍕', '🍔', '🍟', '🌭', '🍿', '🧂', '🥓', '🥚', '🍳', '🧇', '🥞', '🧈', '🍞', '🥐', '🥨', '🥯'],
+  esportes: ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍'],
+  natureza: ['🌳', '🌲', '🌴', '🌵', '🌾', '🌿', '☘️', '🍀', '🍁', '🍂', '🍃', '🌺', '🌻', '🌼', '🌷', '🌹'],
+  transporte: ['🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🚚', '🚛', '🚜', '🛵', '🏍️', '🚲'],
+  entretenimento: ['🎪', '🎭', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🎷', '🎺', '🎸', '🪕', '🎻', '🎲', '🎯'],
+  objetos: ['📱', '💻', '⌚', '📷', '📹', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙️', '⏰', '🕰️', '⏱️', '⏲️'],
+  formas: ['⭐', '✨', '💫', '🌟', '⚡', '🔥', '💧', '🌊', '❄️', '☀️', '🌙', '⭐', '🌈', '☁️', '⛅', '🌤️']
+};
+
+// ========== FUNÇÃO PARA OBTER EMOJIS POR FASE ==========
+const getEmojisForLevel = (level) => {
+  const pairs = Math.ceil(level / 10) + 5;
+  const actualPairs = Math.min(pairs, 16);
+  
+  const shouldMixThemes = level > 40;
+  const themeKeys = Object.keys(THEMES);
+  
+  let selectedEmojis = [];
+  
+  if (shouldMixThemes) {
+    const shuffledThemes = [...themeKeys].sort(() => Math.random() - 0.5);
+    for (let theme of shuffledThemes) {
+      selectedEmojis.push(...THEMES[theme]);
+      if (selectedEmojis.length >= actualPairs) break;
+    }
+  } else {
+    const themeIndex = Math.floor((level - 1) / 10) % themeKeys.length;
+    selectedEmojis = [...THEMES[themeKeys[themeIndex]]];
+  }
+  
+  return selectedEmojis.slice(0, actualPairs);
+};
+
+// ========== COMPONENTE: TELA INICIAL ==========
 const TelaInicial = ({ onNavigate, hasSavedGame }) => {
   return (
     <View style={styles.container}>
       <Text style={styles.logo}>🧠</Text>
-      <Text style={styles.title}>Jogo da Memória</Text>
+      <Text style={styles.title}>Jogo da Memoria</Text>
       
       {hasSavedGame && (
         <TouchableOpacity style={styles.btnPrimary} onPress={() => onNavigate('resumeGame')}>
@@ -33,14 +72,16 @@ const TelaInicial = ({ onNavigate, hasSavedGame }) => {
   );
 };
 
-// Tela de Seleção de Fases
+// ========== COMPONENTE: TELA DE FASES ==========
 const TelaFases = ({ onNavigate, progress }) => {
+  const visibleLevels = Math.min(progress.currentLevel + 5, 100);
+  
   return (
     <View style={styles.container}>
       <Text style={styles.headerTitle}>📋 Seleção de Fases</Text>
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.levelsGrid}>
-        {[...Array(50)].map((_, i) => {
+        {[...Array(visibleLevels)].map((_, i) => {
           const level = i + 1;
           const unlocked = level <= (progress.currentLevel || 1);
           const stars = progress.stars[level] || 0;
@@ -68,16 +109,63 @@ const TelaFases = ({ onNavigate, progress }) => {
   );
 };
 
-// Tela do Jogo
-const TelaJogo = ({ onNavigate, level, onComplete, onSaveGame, savedGameState }) => {
-  const emojis = ['🎮', '🎯', '🎨', '🎭', '🎪', '🎸', '🎺', '🎹'];
+// ========== COMPONENTE: TELA DO JOGO ==========
+const TelaJogo = ({ onNavigate, level, onComplete, onSaveGame, savedGameState, soundEnabled }) => {
+  const emojis = getEmojisForLevel(level);
   const [cards, setCards] = useState([]);
   const [flipped, setFlipped] = useState([]);
   const [matched, setMatched] = useState([]);
   const [moves, setMoves] = useState(0);
   const [points, setPoints] = useState(0);
-  const [canFlip, setCanFlip] = useState(true);
+  const [canFlip, setCanFlip] = useState(false);
   const [showPause, setShowPause] = useState(false);
+  const [timer, setTimer] = useState(null);
+  const [lives, setLives] = useState(3);
+  const [showMemorization, setShowMemorization] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(null);
+  
+  const soundFlip = useRef(null);
+  const soundMatch = useRef(null);
+  const soundComplete = useRef(null);
+
+  useEffect(() => {
+    loadSounds();
+    return () => {
+      if (soundFlip.current) soundFlip.current.unloadAsync();
+      if (soundMatch.current) soundMatch.current.unloadAsync();
+      if (soundComplete.current) soundComplete.current.unloadAsync();
+    };
+  }, []);
+
+  const loadSounds = async () => {
+    try {
+      const { sound: flip } = await Audio.Sound.createAsync(
+        { uri: 'https://cdn.freesound.org/previews/171/171671_2437358-lq.mp3' }
+      );
+      const { sound: match } = await Audio.Sound.createAsync(
+        { uri: 'https://cdn.freesound.org/previews/341/341695_5121236-lq.mp3' }
+      );
+      const { sound: complete } = await Audio.Sound.createAsync(
+        { uri: 'https://cdn.freesound.org/previews/270/270404_5123851-lq.mp3' }
+      );
+      
+      soundFlip.current = flip;
+      soundMatch.current = match;
+      soundComplete.current = complete;
+    } catch (error) {
+      console.log('Erro ao carregar sons:', error);
+    }
+  };
+
+  const playSound = async (sound) => {
+    if (soundEnabled && sound) {
+      try {
+        await sound.replayAsync();
+      } catch (error) {
+        console.log('Erro ao tocar som:', error);
+      }
+    }
+  };
 
   useEffect(() => {
     if (savedGameState && savedGameState.level === level) {
@@ -105,21 +193,60 @@ const TelaJogo = ({ onNavigate, level, onComplete, onSaveGame, savedGameState })
     }
   }, [cards, flipped, matched, moves, points]);
 
+  useEffect(() => {
+    if (timeLeft !== null && timeLeft > 0) {
+      const interval = setInterval(() => {
+        setTimeLeft(t => t - 1);
+      }, 1000);
+      return () => clearInterval(interval);
+    } else if (timeLeft === 0) {
+      handleGameOver();
+    }
+  }, [timeLeft]);
+
   const initGame = () => {
     const shuffled = [...emojis, ...emojis]
       .sort(() => Math.random() - 0.5)
       .map((emoji, index) => ({ id: index, emoji }));
+    
     setCards(shuffled);
     setFlipped([]);
     setMatched([]);
     setMoves(0);
     setPoints(0);
-    setCanFlip(true);
+    setLives(3);
+    setTimeLeft(null);
+    
+    if (shuffled.length >= 28) {
+      setShowMemorization(true);
+      setFlipped(shuffled.map(c => c.id));
+      setTimeout(() => {
+        setFlipped([]);
+        setShowMemorization(false);
+        setCanFlip(true);
+      }, 3000);
+    } else {
+      setCanFlip(true);
+    }
+  };
+
+  const handleGameOver = () => {
+    alert('Tempo esgotado! Você perdeu uma vida.');
+    const newLives = lives - 1;
+    setLives(newLives);
+    
+    if (newLives === 0) {
+      alert('Game Over! Voltando ao menu...');
+      onNavigate('home');
+    } else {
+      initGame();
+    }
   };
 
   const handleCardPress = (id) => {
     if (!canFlip || flipped.includes(id) || matched.includes(id)) return;
 
+    playSound(soundFlip.current);
     const newFlipped = [...flipped, id];
     setFlipped(newFlipped);
 
@@ -132,24 +259,40 @@ const TelaJogo = ({ onNavigate, level, onComplete, onSaveGame, savedGameState })
       const secondCard = cards.find(card => card.id === second);
 
       if (firstCard.emoji === secondCard.emoji) {
+        playSound(soundMatch.current);
         setMatched([...matched, first, second]);
         setPoints(points + 100);
         setFlipped([]);
         setCanFlip(true);
 
         if (matched.length + 2 === cards.length) {
-          const stars = moves < 15 ? 3 : moves < 25 ? 2 : 1;
+          const stars = getStars();
+          playSound(soundComplete.current);
           setTimeout(() => {
             onComplete(level, stars, points + 100, moves + 1);
           }, 500);
         }
       } else {
+        if (moves >= 10 && timeLeft === null) {
+          const timeLimit = getTimeLimit(cards.length);
+          setTimeLeft(timeLimit);
+        }
+        
         setTimeout(() => {
           setFlipped([]);
           setCanFlip(true);
         }, 1000);
       }
     }
+  };
+
+  const getTimeLimit = (numCards) => {
+    if (numCards <= 12) return 60;
+    if (numCards <= 16) return 90;
+    if (numCards <= 20) return 120;
+    if (numCards <= 24) return 150;
+    if (numCards <= 28) return 180;
+    return 210;
   };
 
   const getStars = () => {
@@ -164,6 +307,12 @@ const TelaJogo = ({ onNavigate, level, onComplete, onSaveGame, savedGameState })
         <Text style={styles.gameInfo}>Fase: {level}</Text>
         <Text style={styles.gameInfo}>Pontos: {points}</Text>
         <Text style={styles.gameInfo}>Jogadas: {moves}</Text>
+        {timeLeft !== null && (
+          <Text style={[styles.gameInfo, timeLeft < 10 && styles.timeWarning]}>
+            ⏰ {timeLeft}s
+          </Text>
+        )}
+        <Text style={styles.gameInfo}>❤️ {lives}</Text>
         <TouchableOpacity onPress={() => setShowPause(true)}>
           <Text style={styles.pauseBtn}>⏸️</Text>
         </TouchableOpacity>
@@ -173,7 +322,7 @@ const TelaJogo = ({ onNavigate, level, onComplete, onSaveGame, savedGameState })
         <Text style={styles.starsText}>{'⭐'.repeat(getStars())}{'☆'.repeat(3 - getStars())}</Text>
       </View>
 
-      <View style={styles.board}>
+      <ScrollView contentContainerStyle={styles.board}>
         {cards.map(card => {
           const isFlipped = flipped.includes(card.id) || matched.includes(card.id);
           return (
@@ -192,7 +341,7 @@ const TelaJogo = ({ onNavigate, level, onComplete, onSaveGame, savedGameState })
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
       <Modal visible={showPause} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -214,7 +363,7 @@ const TelaJogo = ({ onNavigate, level, onComplete, onSaveGame, savedGameState })
   );
 };
 
-// Tela de Vitória
+// ========== COMPONENTE: TELA DE VITÓRIA ==========
 const TelaVitoria = ({ onNavigate, level, stars, points, moves, onClearSavedGame }) => {
   useEffect(() => {
     onClearSavedGame();
@@ -247,7 +396,7 @@ const TelaVitoria = ({ onNavigate, level, stars, points, moves, onClearSavedGame
   );
 };
 
-// Tela de Histórico
+// ========== COMPONENTE: HISTÓRICO ==========
 const TelaHistorico = ({ onNavigate, progress }) => {
   const totalStars = Object.values(progress.stars).reduce((a, b) => a + b, 0);
   
@@ -258,8 +407,8 @@ const TelaHistorico = ({ onNavigate, progress }) => {
       <View style={styles.statsCard}>
         <Text style={styles.statsTitle}>Estatísticas Gerais</Text>
         <Text style={styles.statsText}>Fase Atual: {progress.currentLevel || 1}</Text>
-        <Text style={styles.statsText}>Total de Estrelas: {totalStars}/150 ⭐</Text>
-        <Text style={styles.statsText}>Fases Completas: {Object.keys(progress.stars).length}/50</Text>
+        <Text style={styles.statsText}>Total de Estrelas: {totalStars}/300 ⭐</Text>
+        <Text style={styles.statsText}>Fases Completas: {Object.keys(progress.stars).length}/100</Text>
       </View>
       
       <ScrollView style={styles.scrollView}>
@@ -278,21 +427,16 @@ const TelaHistorico = ({ onNavigate, progress }) => {
   );
 };
 
-// Tela de Configurações
-const TelaConfig = ({ onNavigate, onReset }) => {
+// ========== COMPONENTE: CONFIGURAÇÕES ==========
+const TelaConfig = ({ onNavigate, onReset, soundEnabled, onToggleSound }) => {
   return (
     <View style={styles.container}>
       <Text style={styles.headerTitle}>⚙️ Configurações</Text>
       
       <View style={styles.configCard}>
-        <TouchableOpacity style={styles.configItem}>
+        <TouchableOpacity style={styles.configItem} onPress={onToggleSound}>
           <Text style={styles.configText}>🔊 Som</Text>
-          <Text style={styles.configValue}>Ligado</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.configItem}>
-          <Text style={styles.configText}>🎵 Música</Text>
-          <Text style={styles.configValue}>Ligada</Text>
+          <Text style={styles.configValue}>{soundEnabled ? 'Ligado' : 'Desligado'}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={[styles.configItem, styles.dangerItem]} onPress={onReset}>
@@ -311,16 +455,38 @@ const TelaConfig = ({ onNavigate, onReset }) => {
   );
 };
 
-// App Principal
+// ========== APP PRINCIPAL ==========
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('home');
   const [currentLevel, setCurrentLevel] = useState(1);
-  const [progress, setProgress] = useState({
-    currentLevel: 1,
-    stars: {}
-  });
+  const [progress, setProgress] = useState({ currentLevel: 1, stars: {} });
   const [victoryData, setVictoryData] = useState(null);
   const [savedGameState, setSavedGameState] = useState(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  useEffect(() => {
+    loadProgress();
+  }, []);
+
+  const loadProgress = async () => {
+    try {
+      const saved = await AsyncStorage.getItem('gameProgress');
+      if (saved) {
+        setProgress(JSON.parse(saved));
+      }
+    } catch (error) {
+      console.log('Erro ao carregar progresso:', error);
+    }
+  };
+
+  const saveProgress = async (newProgress) => {
+    try {
+      await AsyncStorage.setItem('gameProgress', JSON.stringify(newProgress));
+      setProgress(newProgress);
+    } catch (error) {
+      console.log('Erro ao salvar progresso:', error);
+    }
+  };
 
   const navigate = (screen, level = null) => {
     if (screen === 'resumeGame' && savedGameState) {
@@ -354,13 +520,14 @@ export default function App() {
     if (level >= newProgress.currentLevel) {
       newProgress.currentLevel = level + 1;
     }
-    setProgress(newProgress);
+    saveProgress(newProgress);
     setVictoryData({ level, stars, points, moves });
     setCurrentScreen('victory');
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (confirm('Tem certeza que deseja resetar todo o progresso?')) {
+      await AsyncStorage.removeItem('gameProgress');
       setProgress({ currentLevel: 1, stars: {} });
       setSavedGameState(null);
       setCurrentLevel(1);
@@ -368,14 +535,18 @@ export default function App() {
     }
   };
 
+  const handleToggleSound = () => {
+    setSoundEnabled(!soundEnabled);
+  };
+
   return (
     <>
       {currentScreen === 'home' && <TelaInicial onNavigate={navigate} hasSavedGame={savedGameState !== null} />}
       {currentScreen === 'levels' && <TelaFases onNavigate={navigate} progress={progress} />}
-      {currentScreen === 'game' && <TelaJogo onNavigate={navigate} level={currentLevel} onComplete={handleComplete} onSaveGame={handleSaveGame} savedGameState={savedGameState} />}
+      {currentScreen === 'game' && <TelaJogo onNavigate={navigate} level={currentLevel} onComplete={handleComplete} onSaveGame={handleSaveGame} savedGameState={savedGameState} soundEnabled={soundEnabled} />}
       {currentScreen === 'victory' && victoryData && <TelaVitoria onNavigate={navigate} {...victoryData} onClearSavedGame={handleClearSavedGame} />}
       {currentScreen === 'stats' && <TelaHistorico onNavigate={navigate} progress={progress} />}
-      {currentScreen === 'settings' && <TelaConfig onNavigate={navigate} onReset={handleReset} />}
+      {currentScreen === 'settings' && <TelaConfig onNavigate={navigate} onReset={handleReset} soundEnabled={soundEnabled} onToggleSound={handleToggleSound} />}
     </>
   );
 }
@@ -477,11 +648,17 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 10,
     marginTop: 40,
+    flexWrap: 'wrap',
   },
   gameInfo: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
+    marginHorizontal: 5,
+  },
+  timeWarning: {
+    color: '#e94560',
+    fontWeight: 'bold',
   },
   pauseBtn: {
     fontSize: 24,
@@ -497,11 +674,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     maxWidth: 350,
-    marginBottom: 20,
+    paddingBottom: 20,
   },
   card: {
-    width: 75,
-    height: 75,
+    width: 70,
+    height: 70,
     backgroundColor: '#0f3460',
     margin: 5,
     borderRadius: 12,
@@ -519,7 +696,7 @@ const styles = StyleSheet.create({
     borderColor: '#ff9f43',
   },
   cardText: {
-    fontSize: 35,
+    fontSize: 30,
     fontWeight: 'bold',
   },
   modalOverlay: {

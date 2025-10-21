@@ -1,30 +1,27 @@
 {
   "expo": {
-    "name": "jogo-da-memoria",
-    "slug": "snack-078a8bf2-d46d-4156-8c91-28861994f6f4",
+    "name": "Jogo da Memoria",
+    "slug": "jogo-da-memoria",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
+      "backgroundColor": "#1a1a2e"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1a1a2e"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.jogodamemoria.app"
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "description": "Jogo da memoria"
+    "extra": {
+      "eas": {
+        "projectId": "5b1514c7-9e7b-4c4d-b5bf-2fbeb0198fa2"
+      }
+    }
   }
 }
