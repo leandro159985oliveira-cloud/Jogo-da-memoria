@@ -1,11 +1,24 @@
-# Sample Snack app
+# Política de Privacidade para Jogo da Memória
 
-Open the `App.js` file to start writing some code. You can preview the changes directly on your phone or tablet by scanning the **QR code** or use the iOS or Android emulators. When you're done, click **Save** and share the link!
+A sua privacidade é importante para nós. É política do Jogo da Memória respeitar a sua privacidade em relação a qualquer informação sua que possamos coletar no nosso aplicativo.
 
-When you're ready to see everything that Expo provides (or if you want to use your own editor) you can **Download** your project and use it with [expo cli](https://docs.expo.dev/get-started/installation/#expo-cli)).
+**1. Coleta de Dados**
 
-All projects created in Snack are publicly available, so you can easily share the link to this project via link, or embed it on a web page with the `<>` button.
+Este aplicativo utiliza o serviço de anúncios Google AdMob. O AdMob pode coletar e usar dados anônimos sobre seus interesses para exibir anúncios mais relevantes. Nenhuma informação de identificação pessoal (como nome, endereço, e-mail ou telefone) é coletada por este aplicativo.
 
-If you're having problems, you can tweet to us [@expo](https://twitter.com/expo) or ask in our [forums](https://forums.expo.dev/c/expo-dev-tools/61) or [Discord](https://chat.expo.dev/).
+Os dados que o AdMob pode coletar incluem:
+- Identificadores de dispositivo e de publicidade.
+- Informações de rede e localização aproximada (não o seu endereço exato).
+- Interação com os anúncios.
 
-Snack is Open Source. You can find the code on the [GitHub repo](https://github.com/expo/snack).
+Para mais informações sobre como o Google utiliza os dados, por favor, visite a página de Política de Privacidade e Termos do Google: https://policies.google.com/technologies/ads
+
+**2. Uso das Informações**
+
+As informações coletadas são usadas exclusivamente para a exibição de anúncios personalizados dentro do aplicativo. Não compartilhamos nenhuma informação pessoal com terceiros, exceto quando exigido por lei.
+
+**3. Contato**
+
+Se você tiver alguma dúvida sobre nossa política de privacidade, entre em contato.
+
+*Esta política é efetiva a partir de Outubro de 2025.*
